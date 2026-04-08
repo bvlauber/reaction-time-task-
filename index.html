@@ -3,26 +3,26 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reaction Time Task</title>
+    <title>Reaction Time Experiment</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; }
-        #welcome-screen, #result-screen { text-align: center; background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 90%; width: 500px; }
-        #task-canvas { display: none; background-color: #fff; cursor: crosshair; }
-        #result-screen { display: none; width: 700px; height: auto; }
-        input, button { padding: 12px; margin: 10px; font-size: 1rem; border-radius: 6px; border: 1px solid #ddd; }
-        button { cursor: pointer; background-color: #007bff; color: white; border: none; transition: background 0.2s; min-width: 120px; }
-        button:hover { background-color: #0056b3; }
-        canvas#resultsChart { margin-top: 20px; max-height: 400px; }
-        .stats-text { font-size: 1.2rem; font-weight: bold; color: #333; margin-bottom: 10px; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; font-family: 'Segoe UI', sans-serif; display: flex; justify-content: center; align-items: center; background-color: #f4f7f6; overflow: hidden; }
+        #welcome-screen, #result-screen { text-align: center; background: white; padding: 30px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); width: 90%; max-width: 600px; z-index: 10; }
+        #task-canvas { display: none; background-color: #ffffff; cursor: crosshair; position: absolute; top: 0; left: 0; }
+        #result-screen { display: none; }
+        input, button { padding: 12px 20px; margin: 10px; font-size: 16px; border-radius: 8px; border: 1px solid #ddd; }
+        button { cursor: pointer; background-color: #2ecc71; color: white; border: none; font-weight: bold; transition: 0.2s; }
+        button:hover { background-color: #27ae60; transform: scale(1.05); }
+        .stats-label { font-size: 1.2rem; margin-bottom: 20px; color: #34495e; }
+        #chart-container { position: relative; height: 300px; width: 100%; }
     </style>
 </head>
 <body>
 
     <div id="welcome-screen">
         <h1>Reaction Task</h1>
-        <p>Click the red circles as quickly as possible.<br>There will be 10 trials.</p>
-        <input type="text" id="participant-id" placeholder="Enter Participant ID">
+        <p>Click the 10 red circles as fast as you can.</p>
+        <input type="text" id="participant-id" placeholder="Enter Name/ID">
         <br>
         <button id="start-btn">Start Task</button>
     </div>
@@ -30,133 +30,111 @@
     <canvas id="task-canvas"></canvas>
 
     <div id="result-screen">
-        <h2>Experiment Complete</h2>
-        <p class="stats-text" id="user-stats">Calculating...</p>
-        <canvas id="resultsChart"></canvas>
+        <h2>Results</h2>
+        <div class="stats-label" id="user-avg-text">Calculating...</div>
+        <div id="chart-container">
+            <canvas id="resultsChart"></canvas>
+        </div>
         <br>
-        <button onclick="location.reload()">Restart Task</button>
+        <button onclick="location.reload()">Try Again</button>
     </div>
 
     <script>
         const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbz2SxNReCh3jPnRZpjdKiX41Ff1t7VpjREJZ7MhZ52Xj5Ebu28r5q7BG7CVpJ4yH6A_/exec";
         
-        let participantId = "";
-        let currentSessionRTs = [];
-        let currentTrial = 0;
-        const totalTrials = 10;
-        let startTime, circleX, circleY;
+        let pID = "";
+        let sessionRTs = [];
+        let trialCount = 0;
+        const maxTrials = 10;
+        let startT, cX, cY;
         const radius = 50;
 
-        const welcomeScreen = document.getElementById('welcome-screen');
-        const resultScreen = document.getElementById('result-screen');
+        const welcome = document.getElementById('welcome-screen');
+        const results = document.getElementById('result-screen');
         const canvas = document.getElementById('task-canvas');
         const ctx = canvas.getContext('2d');
 
-        document.getElementById('start-btn').addEventListener('click', () => {
-            const inputId = document.getElementById('participant-id').value.trim();
-            // Generate random ID if empty
-            participantId = inputId || "ID_" + Math.random().toString(36).substring(2, 8).toUpperCase();
-            
-            welcomeScreen.style.display = 'none';
+        document.getElementById('start-btn').onclick = () => {
+            const input = document.getElementById('participant-id').value.trim();
+            pID = input || "User_" + Math.random().toString(36).substr(2, 5).toUpperCase();
+            welcome.style.display = 'none';
             canvas.style.display = 'block';
-            resizeCanvas();
-            nextTrial();
-        });
+            resize();
+            runTrial();
+        };
 
-        function resizeCanvas() {
+        function resize() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
         }
 
-        function nextTrial() {
-            if (currentTrial < totalTrials) {
-                // Short delay between trials
+        function runTrial() {
+            if (trialCount < maxTrials) {
                 setTimeout(() => {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                    
-                    // Logic to keep circle fully on screen
-                    circleX = Math.random() * (canvas.width - radius * 2) + radius;
-                    circleY = Math.random() * (canvas.height - radius * 2) + radius;
-                    
+                    cX = Math.random() * (canvas.width - radius * 2) + radius;
+                    cY = Math.random() * (canvas.height - radius * 2) + radius;
                     ctx.beginPath();
-                    ctx.arc(circleX, circleY, radius, 0, Math.PI * 2);
+                    ctx.arc(cX, cY, radius, 0, Math.PI * 2);
                     ctx.fillStyle = "#e74c3c";
                     ctx.fill();
-                    ctx.closePath();
-                    
-                    startTime = performance.now();
-                }, 500);
+                    startT = performance.now();
+                }, 600);
             } else {
-                finishExperiment();
+                showResults();
             }
         }
 
-        canvas.addEventListener('mousedown', (e) => {
-            const rect = canvas.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-
-            const distance = Math.sqrt((mouseX - circleX)**2 + (mouseY - circleY)**2);
-            
-            if (distance < radius) {
-                const rt = Math.round(performance.now() - startTime);
-                currentSessionRTs.push(rt);
-                currentTrial++;
-                
-                // Send to Google Sheets
-                submitToSheets(participantId, currentTrial, rt);
-                
+        canvas.onclick = (e) => {
+            const dist = Math.sqrt((e.clientX - cX)**2 + (e.clientY - cY)**2);
+            if (dist < radius) {
+                const rt = Math.round(performance.now() - startT);
+                sessionRTs.push(rt);
+                trialCount++;
+                postData(pID, trialCount, rt);
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
-                nextTrial();
+                runTrial();
             }
-        });
+        };
 
-        async function submitToSheets(pid, trialNum, rt) {
-            try {
-                await fetch(WEB_APP_URL, {
-                    method: 'POST',
-                    mode: 'no-cors',
-                    cache: 'no-cache',
-                    body: JSON.stringify({ Participant_ID: pid, Trial_Number: trialNum, Reaction_Time: rt })
-                });
-            } catch (e) {
-                console.error("Data submission failed", e);
-            }
+        function postData(id, trial, rt) {
+            fetch(WEB_APP_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                body: JSON.stringify({ Participant_ID: id, Trial_Number: trial, Reaction_Time: rt })
+            });
         }
 
-        async function finishExperiment() {
+        async function showResults() {
             canvas.style.display = 'none';
-            resultScreen.style.display = 'block';
+            results.style.display = 'block';
             
-            const avgRT = currentSessionRTs.reduce((a, b) => a + b, 0) / totalTrials;
-            document.getElementById('user-stats').innerText = `Your Average Reaction Time: ${Math.round(avgRT)}ms`;
+            const userAvg = sessionRTs.reduce((a, b) => a + b, 0) / maxTrials;
+            document.getElementById('user-avg-text').innerText = `Your Average: ${Math.round(userAvg)}ms`;
 
             try {
-                // GET historical data from Google Sheet
-                const response = await fetch(WEB_APP_URL);
-                const history = await response.json();
-                renderChart(history, avgRT);
-            } catch (e) {
-                document.getElementById('user-stats').innerText += " (Could not load history)";
-                console.error("Failed to fetch historical data", e);
+                const res = await fetch(WEB_APP_URL);
+                const history = await res.json();
+                buildHistogram(history, userAvg);
+            } catch (err) {
+                console.error("Historical data fetch failed.");
             }
         }
 
-        function renderChart(historyData, userAvg) {
-            // Bin the data for histogram (50ms increments)
-            const binSize = 50;
-            const allData = historyData.length > 0 ? historyData : [userAvg];
-            const maxRT = Math.max(...allData, 1000);
+        function buildHistogram(data, userAvg) {
+            const binSize = 50; 
+            const combined = data.concat(userAvg);
+            const maxVal = Math.max(...combined, 1000);
+            
             const bins = {};
+            for (let i = 0; i <= maxVal; i += binSize) bins[i] = 0;
             
-            for (let i = 0; i <= maxRT + binSize; i += binSize) bins[i] = 0;
-            
-            allData.forEach(val => {
-                const bin = Math.floor(val / binSize) * binSize;
-                if (bins[bin] !== undefined) bins[bin]++;
+            data.forEach(val => {
+                const b = Math.floor(val / binSize) * binSize;
+                if (bins[b] !== undefined) bins[b]++;
             });
 
-            const labels = Object.keys(bins).map(b => `${b}ms`);
+            const labels = Object.keys(bins).map(k => k + "ms");
             const counts = Object.values(bins);
 
             new Chart(document.getElementById('resultsChart'), {
@@ -164,46 +142,50 @@
                 data: {
                     labels: labels,
                     datasets: [{
-                        label: 'Total Participants History',
+                        label: 'Global History',
                         data: counts,
-                        backgroundColor: 'rgba(52, 152, 219, 0.6)',
-                        borderColor: 'rgba(41, 128, 185, 1)',
-                        borderWidth: 1
+                        backgroundColor: 'rgba(52, 152, 219, 0.5)',
+                        borderColor: '#2980b9',
+                        borderWidth: 1,
+                        barPercentage: 1,
+                        categoryPercentage: 1
                     }]
                 },
                 options: {
                     responsive: true,
+                    maintainAspectRatio: false,
                     scales: {
-                        y: { beginAtZero: true, title: { display: true, text: 'Frequency' } },
-                        x: { title: { display: true, text: 'Reaction Time (ms)' } }
-                    }
+                        y: { beginAtZero: true, grid: { display: false } },
+                        x: { grid: { display: false } }
+                    },
+                    plugins: { legend: { display: false } }
                 },
                 plugins: [{
-                    // Custom plugin to draw the vertical line for the user's score
-                    afterDraw: (chart) => {
+                    // Custom plugin to draw the "YOU" line
+                    afterDraw: chart => {
                         const {ctx, scales: {x, y}} = chart;
-                        const userBin = Math.floor(userAvg / binSize) * binSize;
-                        const xPos = x.getPixelForValue(`${userBin}ms`);
-                        
+                        const binIndex = Math.floor(userAvg / binSize);
+                        const xPixel = x.getPixelForValue(labels[binIndex]);
+
                         ctx.save();
                         ctx.strokeStyle = '#e74c3c';
-                        ctx.lineWidth = 4;
-                        ctx.setLineDash([6, 4]);
+                        ctx.setLineDash([5, 5]);
+                        ctx.lineWidth = 3;
                         ctx.beginPath();
-                        ctx.moveTo(xPos, y.top);
-                        ctx.lineTo(xPos, y.bottom);
+                        ctx.moveTo(xPixel, y.top);
+                        ctx.lineTo(xPixel, y.bottom);
                         ctx.stroke();
                         
                         ctx.fillStyle = '#e74c3c';
-                        ctx.font = 'bold 14px sans-serif';
-                        ctx.fillText('YOU', xPos - 12, y.top - 5);
+                        ctx.font = 'bold 12px sans-serif';
+                        ctx.fillText('YOU', xPixel - 12, y.top - 10);
                         ctx.restore();
                     }
                 }]
             });
         }
 
-        window.addEventListener('resize', resizeCanvas);
+        window.onresize = resize;
     </script>
 </body>
 </html>
