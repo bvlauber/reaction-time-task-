@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reaction Time Task</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; background-color: #f8f9fa; }
+        #welcome-screen, #result-screen { text-align: center; background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 90%; width: 500px; }
+        #task-canvas { display: none; background-color: #fff; cursor: crosshair; }
+        #result-screen { display: none; width: 700px; height: auto; }
+        input, button { padding: 12px; margin: 10px; font-size: 1rem; border-radius: 6px; border: 1px solid #ddd; }
+        button { cursor: pointer; background-color: #007bff; color: white; border: none; transition: background 0.2s; min-width: 120px; }
+        button:hover { background-color: #0056b3; }
+        canvas#resultsChart { margin-top: 20px; max-height: 400px; }
+        .stats-text { font-size: 1.2rem; font-weight: bold; color: #333; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="welcome-screen">
+        <h1>Reaction Task</h1>
+        <p>Click the red circles as quickly as possible.<br>There will be 10 trials.</p>
+        <input type="text" id="participant-id" placeholder="Enter Participant ID">
+        <br>
+        <button id="start-btn">Start Task</button>
+    </div>
+
+    <canvas id="task-canvas"></canvas>
+
+    <div id="result-screen">
+        <h2>Experiment Complete</h2>
+        <p class="stats-text" id="user-stats">Calculating...</p>
+        <canvas id="resultsChart"></canvas>
+        <br>
+        <button onclick="location.reload()">Restart Task</button>
+    </div>
+
+    <script>
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxUBzCb5rZHtU6JktsS1ITPHoQQAPb9xW2OwX_VI5olLwiCZcK7d_H6uZ-jWhECh94/exec";
+        
+        let participantId = "";
+        let currentSessionRTs = [];
+        let currentTrial = 0;
+        const totalTrials = 10;
+        let startTime, circleX, circleY;
+        const radius = 50;
+
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const resultScreen = document.getElementById('result-screen');
+        const canvas = document.getElementById('task-canvas');
+        const ctx = canvas.getContext('2d');
+
+        document.getElementById('start-btn').addEventListener('click', () => {
+            const inputId = document.getElementById('participant-id').value.trim();
+            // Generate random ID if empty
+            participantId = inputId || "ID_" + Math.random().toString(36).substring(2, 8).toUpperCase();
+            
+            welcomeScreen.style.display = 'none';
+            canvas.style.display = 'block';
+            resizeCanvas();
+            nextTrial();
+        });
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        function nextTrial() {
+            if (currentTrial < totalTrials) {
+                // Short delay between trials
+                setTimeout(() => {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    
+                    // Logic to keep circle fully on screen
+                    circleX = Math.random() * (canvas.width - radius * 2) + radius;
+                    circleY = Math.random() * (canvas.height - radius * 2) + radius;
+                    
+                    ctx.beginPath();
+                    ctx.arc(circleX, circleY, radius, 0, Math.PI * 2);
+                    ctx.fillStyle = "#e74c3c";
+                    ctx.fill();
+                    ctx.closePath();
+                    
+                    startTime = performance.now();
+                }, 500);
+            } else {
+                finishExperiment();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+
+            const distance = Math.sqrt((mouseX - circleX)**2 + (mouseY - circleY)**2);
+            
+            if (distance < radius) {
+                const rt = Math.round(performance.now() - startTime);
+                currentSessionRTs.push(rt);
+                currentTrial++;
+                
+                // Send to Google Sheets
+                submitToSheets(participantId, currentTrial, rt);
+                
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                nextTrial();
+            }
+        });
+
+        async function submitToSheets(pid, trialNum, rt) {
+            try {
+                await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    cache: 'no-cache',
+                    body: JSON.stringify({ Participant_ID: pid, Trial_Number: trialNum, Reaction_Time: rt })
+                });
+            } catch (e) {
+                console.error("Data submission failed", e);
+            }
+        }
+
+        async function finishExperiment() {
+            canvas.style.display = 'none';
+            resultScreen.style.display = 'block';
+            
+            const avgRT = currentSessionRTs.reduce((a, b) => a + b, 0) / totalTrials;
+            document.getElementById('user-stats').innerText = `Your Average Reaction Time: ${Math.round(avgRT)}ms`;
+
+            try {
+                // GET historical data from Google Sheet
+                const response = await fetch(WEB_APP_URL);
+                const history = await response.json();
+                renderChart(history, avgRT);
+            } catch (e) {
+                document.getElementById('user-stats').innerText += " (Could not load history)";
+                console.error("Failed to fetch historical data", e);
+            }
+        }
+
+        function renderChart(historyData, userAvg) {
+            // Bin the data for histogram (50ms increments)
+            const binSize = 50;
+            const allData = historyData.length > 0 ? historyData : [userAvg];
+            const maxRT = Math.max(...allData, 1000);
+            const bins = {};
+            
+            for (let i = 0; i <= maxRT + binSize; i += binSize) bins[i] = 0;
+            
+            allData.forEach(val => {
+                const bin = Math.floor(val / binSize) * binSize;
+                if (bins[bin] !== undefined) bins[bin]++;
+            });
+
+            const labels = Object.keys(bins).map(b => `${b}ms`);
+            const counts = Object.values(bins);
+
+            new Chart(document.getElementById('resultsChart'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Total Participants History',
+                        data: counts,
+                        backgroundColor: 'rgba(52, 152, 219, 0.6)',
+                        borderColor: 'rgba(41, 128, 185, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true, title: { display: true, text: 'Frequency' } },
+                        x: { title: { display: true, text: 'Reaction Time (ms)' } }
+                    }
+                },
+                plugins: [{
+                    // Custom plugin to draw the vertical line for the user's score
+                    afterDraw: (chart) => {
+                        const {ctx, scales: {x, y}} = chart;
+                        const userBin = Math.floor(userAvg / binSize) * binSize;
+                        const xPos = x.getPixelForValue(`${userBin}ms`);
+                        
+                        ctx.save();
+                        ctx.strokeStyle = '#e74c3c';
+                        ctx.lineWidth = 4;
+                        ctx.setLineDash([6, 4]);
+                        ctx.beginPath();
+                        ctx.moveTo(xPos, y.top);
+                        ctx.lineTo(xPos, y.bottom);
+                        ctx.stroke();
+                        
+                        ctx.fillStyle = '#e74c3c';
+                        ctx.font = 'bold 14px sans-serif';
+                        ctx.fillText('YOU', xPos - 12, y.top - 5);
+                        ctx.restore();
+                    }
+                }]
+            });
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+    </script>
+</body>
+</html>
